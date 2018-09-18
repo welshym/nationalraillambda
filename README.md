@@ -1,5 +1,9 @@
 # Setup
 
+Deploys a Lambda based app using CloudFormation. Follows the example here:
+
+https://cloudonaut.io/create-a-serverless-restful-api-with-api-gateway-cloudformation-lambda-and-dynamodb/
+
 ## Delays App using Cloud Formation
 
 create the lambda code file (`lambda.zip`)
@@ -127,49 +131,19 @@ the following examples assume that you replace `$ApiGatewayEndpoint` with `$ApiI
 create a user
 
 ```
-curl -vvv -X POST -d '{"email": "your@mail.com", "phone": "0123456789"}' -H "Content-Type: application/json" https://$ApiGatewayEndpoint/user
+curl -vvv -X GET -d '{"email": "your@mail.com", "phone": "0123456789"}' -H "Content-Type: application/json" https://$ApiGatewayEndpoint/user
 ```
 
-list users
+list delays
 
 ```
-curl -vvv -X GET https://$ApiGatewayEndpoint/user
+curl -vvv -X GET https://$ApiGatewayEndpoint/delays
 ```
 
-create a task
+create a delay
 
 ```
-curl -vvv -X POST -d '{"description": "test task"}' -H "Content-Type: application/json" https://$ApiGatewayEndpoint/user/$UserId/task
-```
-
-list tasks
-
-```
-curl -vvv -X GET https://$ApiGatewayEndpoint/user/$UserId/task
-```
-
-mark task as complete
-
-```
-curl -vvv -X PUT https://$ApiGatewayEndpoint/user/$UserId/task/$TaskId
-```
-
-delete task
-
-```
-curl -vvv -X DELETE https://$ApiGatewayEndpoint/user/$UserId/task/$TaskId
-```
-
-create a task with a category
-
-```
-curl -vvv -X POST -d '{"description": "test task", "category": "test"}' -H "Content-Type: application/json" https://$ApiGatewayEndpoint/user/$UserId/task
-```
-
-list tasks by category
-
-```
-curl -vvv -X GET https://$ApiGatewayEndpoint/category/$Category/task
+curl -vvv -X POST -d '{ "delayInSeconds": "66", "delayDate": "2018-03-13", "arrivalDetails": { "fullName": "Waterloo", "scheduledTimestamp": "2018-02-13T07:54:00.000Z", "crs": "WAT", "actualTimestamp": "2018-02-13T08:59:33.123Z" }, "departureDetails": { "fullName": "Petersfield", "scheduledTimestamp": "2018-02-13T06:48:33.123Z", "crs": "PTR", "actualTimestamp": "2018-02-13T06:59:33.123Z" }, "trainId": "1123" }' -H "Content-Type: application/json" https://$ApiGatewayEndpoint/user/$UserId/task
 ```
 
 # Teardown
