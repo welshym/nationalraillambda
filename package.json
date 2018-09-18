@@ -1,16 +1,16 @@
 {
   "dependencies": {
     "joi": "^13.6.0",
-    "moment": "2.10.3",
-    "node-uuid": "1.4.3",
-    "prod": "^1.0.1"
+    "moment": "^2.22.2",
+    "prod": "^1.0.1",
+    "uuid": "^3.3.2"
   },
   "devDependencies": {
-    "aws-sdk": "2.4.2"
+    "aws-sdk": "^2.316.0"
   },
   "bundledDependencies": [
     "moment",
-    "node-uuid",
+    "uuid",
     "joi"
   ],
   "private": true
