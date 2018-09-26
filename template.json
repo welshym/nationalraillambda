@@ -214,10 +214,12 @@
           }],
           "PassthroughBehavior": "NEVER",
           "RequestTemplates": {
-            "application/json": "{\"fun\": \"getDelaysDB\"}"
+            "application/json": "#set($qs = $input.params().querystring)\n{\n\"fun\": \"getDelaysDB\",\n\"query\":{ #foreach ($key in $qs.keySet())\n\"$key\":\"$qs.get($key)\"#if($foreach.hasNext), #end #end}}"
           }
         },
         "RequestParameters": {
+          "method.request.querystring.fromDate": false,
+          "method.request.querystring.endDate": false
         },
         "MethodResponses": [{
           "ResponseModels": {

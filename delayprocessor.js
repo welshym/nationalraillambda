@@ -4,6 +4,7 @@ let uuid = require('uuid');
 let AWS = require('aws-sdk');
 
 /**********************************************/
+const MAXLENGTH = 10;
 let table = 'delays';
 let dbClient = new AWS.DynamoDB();
 
@@ -299,86 +300,42 @@ exports.getDelaysDB = function (event, cb) {
     TableName: table
   };
 
-  if ((event.query !== undefined) && (event.query.delayed !== undefined)) {
-    let dbQueryParams = {
-      ':s': '0',
-    };
-    let marshalledQueryParams = AWS.DynamoDB.Converter.marshall(dbQueryParams);
-    paramsQuery.ExpressionAttributeValues = marshalledQueryParams;
-
-    if (event.query.delayed.trim() === 'true') {
-      paramsQuery.FilterExpression = 'delayInSeconds > :s';
-    } else {
-      paramsQuery.FilterExpression = 'delayInSeconds = :s';
-    }
-  }
-
-  let promiseQuery = dbClient.scan(paramsQuery).promise();
-
-  console.log('query string: ', event.query);
-  console.log('app.get /delays params: ', paramsQuery);
-  promiseQuery.then((data) => {
-    console.log('GET: Success');
-    console.log('GET: ', processDBData(data));
-    cb(null, {"body": processDBData(data)});
-  }).catch((err) => {
-    console.log('Error: ', err);
-    var error = new Error('ERROR: Something bad happened');
-    error.name = 'requestNotOk';
-    cb(error);
-  });
+  let dbQueryParams = undefined;
+    
+  paramsQuery, dbQueryParams = dateSplits(event.query, paramsQuery, dbQueryParams);
+  
+  console.log('paramsQuery: ', paramsQuery);
+  console.log('dbQueryParams: ', dbQueryParams);
+    
+  factoryGetDBData(event.query, cb, paramsQuery, dbQueryParams);
 };
 
-exports.getDelaysDBDate = function(req, res) {
-  // '/delays/:fromDate'
-  console.log('GET fromDate request');
-  console.log(req.params);
-  console.log(req.query);
 
-  let fromDateSplits = req.params.fromDate.split('-');
-  let fromDate = new Date(fromDateSplits[0], fromDateSplits[1] - 1, fromDateSplits[2]);
-
-  let toDate = new Date(fromDate.getFullYear() + 1, fromDateSplits[1] - 1, fromDateSplits[2]);
-
-  let paramsQuery = {
-    TableName: table
-  };
-
-  let dbQueryParams = {
-    ':fromTimestamp': fromDate.toISOString(),
-    ':toTimestamp': toDate.toISOString()
-  };
-
-  console.log(dbQueryParams);
-
-  if (req.query.delayed !== undefined) {
-    dbQueryParams[':s'] = '0';
-
-    if (req.query.delayed.trim() === 'true') {
-      paramsQuery.FilterExpression = 'departureDetails.scheduledTimestamp > :fromTimestamp and departureDetails.scheduledTimestamp <= :toTimestamp and delayInSeconds > :s';
+function dateSplits(query, paramsQuery, dbQueryParams) {
+  if ((query !== undefined) && (query.fromDate !== undefined)) {  
+    console.log('query.fromDate: ',query.fromDate);
+    let fromDateSplits = query.fromDate.split('-');
+    let fromDate = new Date(fromDateSplits[0], fromDateSplits[1] - 1, fromDateSplits[2]);
+    
+    let toDate = "";
+    if (query.toDate !== undefined) {  
+      let toDateSplits = query.toDate.split('-');
+      toDate = new Date(toDateSplits[0], toDateSplits[1] - 1, toDateSplits[2]);
     } else {
-      paramsQuery.FilterExpression = 'departureDetails.scheduledTimestamp > :fromTimestamp and departureDetails.scheduledTimestamp <= :toTimestamp and delayInSeconds = :s';
+      toDate = new Date(fromDate.getFullYear() + 1, fromDateSplits[1] - 1, fromDateSplits[2]);    
     }
-  } else {
+      
+    dbQueryParams = {
+      ':fromTimestamp': fromDate.toISOString(),
+      ':toTimestamp': toDate.toISOString()
+    };
+
+    console.log('dbQueryParams: ', dbQueryParams);
     paramsQuery.FilterExpression = 'departureDetails.scheduledTimestamp > :fromTimestamp and departureDetails.scheduledTimestamp <= :toTimestamp';
   }
-
-  let marshalledQueryParams = AWS.DynamoDB.Converter.marshall(dbQueryParams);
-  paramsQuery.ExpressionAttributeValues = marshalledQueryParams;
-
-  console.log('app.get: ', paramsQuery);
-
-  let promiseQuery = dbClient.scan(paramsQuery).promise();
-
-  promiseQuery.then((data) => {
-    console.log('GET: Success');
-    console.log('GET: ', data.Items);
-    res.status(200).json(processDBData(data));
-  }).catch((err) => {
-    console.log('Error: ', err);
-    res.status(404).json({ ErrorMsg: 'Something bad happened' });
-  });
-};
+    
+  return (paramsQuery, dbQueryParams);
+}
 
 function processDBData(data) {
   let result = [];
@@ -388,90 +345,85 @@ function processDBData(data) {
   return result;
 };
 
-exports.getDelaysDBDates = function (req, res) {
-  // '/delays/:fromDate/:toDate'  
-  console.log('GET fromDate toDate request');
-  console.log(req.params);
-  console.log(req.query);
 
-  let fromDateSplits = req.params.fromDate.split('-');
-  let fromDate = new Date(fromDateSplits[0], fromDateSplits[1] - 1, fromDateSplits[2]);
+function scanDB (pageSize, pageNumber, processedCount, paramsQuery, respData) {
+  let startingPoint = pageNumber * pageSize;
+  return new Promise((resolve, reject) => {
+    let promiseQuery = dbClient.scan(paramsQuery).promise();
+    promiseQuery.then((scanData) => {
+      if (((scanData.Count + processedCount) > startingPoint) && (respData.length !== pageSize)) {
+        let startProc = 0;
+        if (startingPoint > processedCount) {
+          startProc = startingPoint - processedCount;
+        }
 
-  let toDateSplits = req.params.toDate.split('-');
-  let toDate = new Date(toDateSplits[0], toDateSplits[1] - 1, toDateSplits[2]);
+        let endProc = scanData.Count;
+        if ((endProc - startProc + respData.length) > pageSize) {
+          endProc = startProc + pageSize - respData.length;
+        }
 
-  let paramsQuery = {
-    TableName: table
-  };
+        for (let i = startProc; i < endProc; i++) {
+          console.log(AWS.DynamoDB.Converter.unmarshall(scanData.Items[i]));
+          respData.push(AWS.DynamoDB.Converter.unmarshall(scanData.Items[i]));
+        }
+      }
 
-  let dbQueryParams = {
-    ':fromTimestamp': fromDate.toISOString(),
-    ':toTimestamp': toDate.toISOString()
-  };
+      if (scanData.LastEvaluatedKey === undefined) {
+        console.log('No more data');
+        resolve({ pageSize, pageNumber, totalPages: Math.ceil((processedCount + scanData.Count) / pageSize), delays: respData });
+      } else {
+        console.log('Scanning again');
+        paramsQuery.ExclusiveStartKey = scanData.LastEvaluatedKey;
+        resolve(scanDB(pageSize, pageNumber, processedCount + scanData.Count, paramsQuery, respData));
+      }
+    }).catch((err) => {
+      console.log('Error from scan promise: ', err);
+      return reject();
+    });
+  });
+}
 
-  console.log(dbQueryParams);
 
-  if (req.query.delayed !== undefined) {
-    dbQueryParams[':s'] = '0';
-
-    if (req.query.delayed === true) {
-      paramsQuery.FilterExpression = 'departureDetails.scheduledTimestamp > :fromTimestamp and departureDetails.scheduledTimestamp <= :toTimestamp and delayInSeconds > :s';
-    } else {
-      paramsQuery.FilterExpression = 'departureDetails.scheduledTimestamp > :fromTimestamp and departureDetails.scheduledTimestamp <= :toTimestamp and delayInSeconds = :s';
+function factoryGetDBData (query, cb, paramsQuery, dbQueryParams) {
+  if ((query !== undefined) && (query.delayed !== undefined)) {
+    dbQueryParams[':delayed'] = '0';
+    if (paramsQuery.FilterExpression === undefined) {
+      paramsQuery.FilterExpression = '';
     }
-  } else {
-    paramsQuery.FilterExpression = 'departureDetails.scheduledTimestamp > :fromTimestamp and departureDetails.scheduledTimestamp <= :toTimestamp';
+
+    if (query.delayed.trim() === 'true') {
+      paramsQuery.FilterExpression += 'and delayInSeconds > :delayed';
+    } else {
+      paramsQuery.FilterExpression += 'and delayInSeconds = :delayed';
+    }
   }
 
-  let marshalledQueryParams = AWS.DynamoDB.Converter.marshall(dbQueryParams);
-  paramsQuery.ExpressionAttributeValues = marshalledQueryParams;
-  paramsQuery.FilterExpression = 'departureDetails.scheduledTimestamp > :fromTimestamp and departureDetails.scheduledTimestamp <= :toTimestamp';
+  if (dbQueryParams !== undefined) {
+    let marshalledQueryParams = AWS.DynamoDB.Converter.marshall(dbQueryParams);
+    paramsQuery.ExpressionAttributeValues = marshalledQueryParams;  
+  }
 
-  let promiseQuery = dbClient.scan(paramsQuery).promise();
+  let pageNumber = 0;
+  if ((query !== undefined) && (query.pageNumber !== undefined) && (query.pageNumber > 0)) {
+    pageNumber = Number(query.pageNumber);
+  }
 
-  promiseQuery.then((data) => {
-    console.log('GET: Success');
-    res.status(200).json(processDBData(data));
+  let pageSize = MAXLENGTH;
+  if (query !== undefined) {
+    if ((query.pageSize !== undefined) && (query.pageSize < MAXLENGTH) && (query.pageSize > 0)) {
+      pageSize = Number(query.pageSize);
+    }
+  }
+  let data = [];
+  let scanDBPromise = scanDB(pageSize, pageNumber, 0, paramsQuery, data);
+
+  scanDBPromise.then((data) => {
+    console.log('factoryGetDBData: Success');
+    cb(null, {"body": data});
   }).catch((err) => {
     console.log('Error: ', err);
-    res.status(404).json({ ErrorMsg: 'Something bad happened' });
+    var error = new Error('ERROR: Something bad happened');
+    error.name = 'requestNotOk';
+    cb(error);
   });
-};
-
-function getValue(attribute, type) {
-  if (attribute === undefined) {
-    return null;
-  }
-  return attribute[type];
-};
-
-function mapTaskItem(item) {
-  return {
-    "tid": item.tid.N,
-    "description": item.description.S,
-    "created": item.created.N,
-    "due": getValue(item.due, 'N'),
-    "category": getValue(item.category, 'S'),
-    "completed": getValue(item.completed, 'N')
-  };
-};
-
-function mapUserItem(item) {
-  return {
-    "uid": item.uid.S,
-    "email": item.email.S,
-    "phone": item.phone.S
-  };
-};
-
-exports.getDelays = function(event, cb) {
-  console.log("getDelays", JSON.stringify(event));
-  var res = {
-    "body": "test"
-  };
-//  var error = new Error('ERROR: Request status code not OK');
-//  error.name = 'requestNotOk';
-//  cb(error);
-  cb(null, res);
-//  cb(null, {"body":[]});
-};
+}
