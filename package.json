@@ -3,6 +3,7 @@
     "joi": "^13.6.0",
     "moment": "^2.22.2",
     "prod": "^1.0.1",
+    "soap": "^0.25.0",
     "uuid": "^3.3.2"
   },
   "devDependencies": {
